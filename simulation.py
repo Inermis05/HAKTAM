@@ -1,32 +1,32 @@
 import random
 
 class Node:
-    """개별 노드를 나타내는 클래스"""
+    # 개별 노드
     def __init__(self, node_id):
         self.id = node_id
         self.trust_score = 0.5
 
     def update_trust_score(self, voted_for_winner, change=0.05):
-        """투표 결과에 따라 신뢰도를 조절합니다."""
+        # 신뢰도 시스템
         if voted_for_winner:
             self.trust_score += change
         else:
             self.trust_score -= change
         
-        # 신뢰도는 0과 1 사이의 값을 가집니다.
+        
         self.trust_score = max(0.0, min(1.0, self.trust_score))
 
     def __repr__(self):
         return f"Node(id={self.id}, trust={self.trust_score:.2f})"
 
 class LowerChain:
-    """하위 체인을 나타내는 클래스. 여러 노드를 그룹화합니다."""
+    # 하위체인 클래스
     def __init__(self, chain_id, nodes):
         self.id = chain_id
         self.nodes = nodes
 
     def tally_internal_votes(self, all_votes, candidates, malicious_threshold):
-        """자신에게 속한 노드들의 투표를 집계합니다."""
+        # 노드 집계
         internal_tally = {candidate: 0 for candidate in candidates}
         print(f"  -- Tallying for Lower Chain {self.id} --")
         for node in self.nodes:
@@ -41,7 +41,7 @@ class LowerChain:
         return internal_tally
 
 class BlockchainSimulator:
-    """상위/하위 체인 구조를 포함한 블록체인 투표 시뮬레이터"""
+    # 상위노드 하위노드 구현
     def __init__(self, chain_setup, candidates):
         self.all_nodes = [Node(i) for i in range(sum(len(nodes) for nodes in chain_setup))]
         self.lower_chains = []
@@ -55,7 +55,7 @@ class BlockchainSimulator:
         self.malicious_threshold = 0.25
 
     def print_status(self):
-        """모든 노드의 현재 신뢰도 상태를 체인별로 출력합니다."""
+        # 신뢰도 출력
         print("--- Node Status ---")
         for chain in self.lower_chains:
             print(f"  Lower Chain {chain.id}:")
@@ -64,7 +64,7 @@ class BlockchainSimulator:
         print("--------------------")
 
     def run_round(self, round_num, votes_cast):
-        """한 라운드의 투표 시뮬레이션을 실행합니다."""
+        # 한 라운드 투표 실행
         print(f"\n========== Round {round_num} Start ==========")
         self.print_status()
 
@@ -102,7 +102,7 @@ class BlockchainSimulator:
         self.print_status()
 
     def _handle_tie(self, tied_candidates, votes):
-        # (이하 무승부 처리 로직은 이전과 동일)
+        
         print("  1. Checking sum of trust scores...")
         trust_sums = {c: 0 for c in tied_candidates}
         for node_id, choice in votes.items():
