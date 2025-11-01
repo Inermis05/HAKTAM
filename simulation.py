@@ -1,0 +1,159 @@
+import random
+
+class Node:
+    """개별 노드를 나타내는 클래스"""
+    def __init__(self, node_id):
+        self.id = node_id
+        self.trust_score = 0.5
+
+    def update_trust_score(self, voted_for_winner, change=0.05):
+        """투표 결과에 따라 신뢰도를 조절합니다."""
+        if voted_for_winner:
+            self.trust_score += change
+        else:
+            self.trust_score -= change
+        
+        # 신뢰도는 0과 1 사이의 값을 가집니다.
+        self.trust_score = max(0.0, min(1.0, self.trust_score))
+
+    def __repr__(self):
+        return f"Node(id={self.id}, trust={self.trust_score:.2f})"
+
+class LowerChain:
+    """하위 체인을 나타내는 클래스. 여러 노드를 그룹화합니다."""
+    def __init__(self, chain_id, nodes):
+        self.id = chain_id
+        self.nodes = nodes
+
+    def tally_internal_votes(self, all_votes, candidates, malicious_threshold):
+        """자신에게 속한 노드들의 투표를 집계합니다."""
+        internal_tally = {candidate: 0 for candidate in candidates}
+        print(f"  -- Tallying for Lower Chain {self.id} --")
+        for node in self.nodes:
+            choice = all_votes[node.id]
+            is_malicious = node.trust_score <= malicious_threshold
+            print(f"    Node {node.id} (trust: {node.trust_score:.2f}) votes for {choice}", end="")
+            if not is_malicious:
+                internal_tally[choice] += 1
+                print("")
+            else:
+                print(" (Vote not counted - Malicious)")
+        return internal_tally
+
+class BlockchainSimulator:
+    """상위/하위 체인 구조를 포함한 블록체인 투표 시뮬레이터"""
+    def __init__(self, chain_setup, candidates):
+        self.all_nodes = [Node(i) for i in range(sum(len(nodes) for nodes in chain_setup))]
+        self.lower_chains = []
+        node_idx = 0
+        for i, node_ids in enumerate(chain_setup):
+            chain_nodes = [self.all_nodes[node_idx + j] for j in range(len(node_ids))]
+            self.lower_chains.append(LowerChain(chain_id=i, nodes=chain_nodes))
+            node_idx += len(node_ids)
+            
+        self.candidates = candidates
+        self.malicious_threshold = 0.25
+
+    def print_status(self):
+        """모든 노드의 현재 신뢰도 상태를 체인별로 출력합니다."""
+        print("--- Node Status ---")
+        for chain in self.lower_chains:
+            print(f"  Lower Chain {chain.id}:")
+            for node in chain.nodes:
+                print(f"    {node}")
+        print("--------------------")
+
+    def run_round(self, round_num, votes_cast):
+        """한 라운드의 투표 시뮬레이션을 실행합니다."""
+        print(f"\n========== Round {round_num} Start ==========")
+        self.print_status()
+
+        # 1. 각 하위 체인별로 내부 투표 집계
+        print("\n--- 1. Lower Chain Internal Tally ---")
+        final_tally = {candidate: 0 for candidate in self.candidates}
+        for chain in self.lower_chains:
+            internal_result = chain.tally_internal_votes(votes_cast, self.candidates, self.malicious_threshold)
+            for candidate, votes in internal_result.items():
+                final_tally[candidate] += votes
+
+        # 2. 상위 체인에서 최종 결과 합산
+        print("\n--- 2. Upper Chain Final Tally ---")
+        for candidate, count in final_tally.items():
+            print(f"  {candidate}: {count} votes")
+
+        # 3. 승자 결정
+        max_votes = max(final_tally.values())
+        winners = [c for c, v in final_tally.items() if v == max_votes]
+
+        if len(winners) == 1:
+            final_winner = winners[0]
+            print(f"\nWinner is {final_winner}")
+        else:
+            print(f"\nTie between: {winners}. Applying tie-breaking rules...")
+            final_winner = self._handle_tie(winners, votes_cast)
+            print(f"Final Winner after tie-break is {final_winner}")
+
+        # 4. 모든 노드의 신뢰도 업데이트
+        for node in self.all_nodes:
+            voted_for = votes_cast[node.id]
+            node.update_trust_score(voted_for == final_winner)
+        
+        print(f"\n========== Round {round_num} End ==========")
+        self.print_status()
+
+    def _handle_tie(self, tied_candidates, votes):
+        # (이하 무승부 처리 로직은 이전과 동일)
+        print("  1. Checking sum of trust scores...")
+        trust_sums = {c: 0 for c in tied_candidates}
+        for node_id, choice in votes.items():
+            if choice in trust_sums:
+                trust_sums[choice] += self.all_nodes[node_id].trust_score
+        max_trust_sum = max(trust_sums.values())
+        potential_winners = [c for c, s in trust_sums.items() if s == max_trust_sum]
+        if len(potential_winners) == 1: return potential_winners[0]
+
+        print("  2. Checking number of 1.0 trust nodes...")
+        one_trust_counts = {c: 0 for c in potential_winners}
+        for node_id, choice in votes.items():
+            if choice in one_trust_counts and self.all_nodes[node_id].trust_score == 1.0:
+                one_trust_counts[choice] += 1
+        max_one_trust_count = max(one_trust_counts.values())
+        potential_winners_2 = [c for c, count in one_trust_counts.items() if count == max_one_trust_count]
+        if len(potential_winners_2) == 1: return potential_winners_2[0]
+
+        print("  3. Checking for highest trust voter...")
+        highest_trust_voter = None; highest_trust_score = -1.0
+        for node_id, choice in votes.items():
+            if choice in potential_winners_2:
+                node_score = self.all_nodes[node_id].trust_score
+                if node_score > highest_trust_score: highest_trust_score = node_score; highest_trust_voter = self.all_nodes[node_id]
+        voters_with_highest_score = [node for node in self.all_nodes if node.trust_score == highest_trust_score and votes[node.id] in potential_winners_2]
+        if len(voters_with_highest_score) == 1: return votes[highest_trust_voter.id]
+        
+        print("  Could not resolve tie. Defaulting to first candidate.")
+        return potential_winners_2[0]
+
+# --- 시뮬레이션 실행 ---
+if __name__ == "__main__":
+    # 설정
+    CANDIDATES = ['A', 'B', 'C']
+    NUM_NODES = 100
+    NUM_CHAINS = 10
+    NODES_PER_CHAIN = NUM_NODES // NUM_CHAINS
+
+    # 하위 체인 구조 동적 생성 (10개 체인, 각 10개 노드)
+    CHAIN_SETUP = []
+    node_counter = 0
+    for i in range(NUM_CHAINS):
+        chain = list(range(node_counter, node_counter + NODES_PER_CHAIN))
+        CHAIN_SETUP.append(chain)
+        node_counter += NODES_PER_CHAIN
+    
+    sim = BlockchainSimulator(CHAIN_SETUP, CANDIDATES)
+
+    # 5라운드 동안 무작위 투표로 시뮬레이션 실행
+    NUM_ROUNDS = 5
+    for i in range(NUM_ROUNDS):
+        # 100개 노드에 대한 무작위 투표 생성
+        votes = {node_id: random.choice(CANDIDATES) for node_id in range(NUM_NODES)}
+        sim.run_round(round_num=i + 1, votes_cast=votes)
